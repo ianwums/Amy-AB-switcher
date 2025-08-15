@@ -13,6 +13,7 @@
       --accent: #22d3ee;    /* cyan-400 */
       --accent-2: #a78bfa;  /* violet-400 */
       --danger: #ef4444;    /* red-500 */
+      --warn: #f59e0b;      /* amber-500 */
     }
     * { box-sizing: border-box; }
     body {
@@ -21,7 +22,7 @@
       color: var(--text);
       line-height: 1.5;
     }
-    .wrap { max-width: 900px; margin: 32px auto; padding: 0 16px; }
+    .wrap { max-width: 980px; margin: 32px auto; padding: 0 16px; }
     header { display:flex; align-items:center; justify-content:space-between; gap: 12px; }
     h1 { font-weight: 700; font-size: clamp(20px, 3vw, 28px); margin: 0; }
     .card {
@@ -30,7 +31,7 @@
       border-radius: 16px; padding: 16px; box-shadow: 0 10px 24px rgba(0,0,0,0.25);
     }
     .grid { display:grid; grid-template-columns: 1fr; gap: 16px; }
-    @media (min-width: 720px){ .grid { grid-template-columns: 1fr 1fr; } }
+    @media (min-width: 900px){ .grid { grid-template-columns: 1fr 1fr; } }
 
     label { font-size: 13px; color: #cbd5e1; display:block; margin-bottom: 6px; }
     input[type="file"], input[type="url"], input[type="text"] {
@@ -61,10 +62,13 @@
     .activeA { color: var(--accent); }
     .activeB { color: var(--accent-2); }
 
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
 
     footer { margin-top: 22px; font-size: 12px; color: #9ca3af; display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
     kbd { background:#111827; border:1px solid rgba(255,255,255,0.12); border-bottom-color: rgba(0,0,0,0.6); padding:2px 6px; border-radius:6px; font-size:11px; box-shadow: inset 0 -1px 0 rgba(255,255,255,0.06); }
+
+    .mini { font-size:11px; color:#cbd5e1; }
+    .row { display:flex; align-items:center; gap:8px; }
   </style>
 </head>
 <body>
@@ -82,16 +86,16 @@
       <div class="card">
         <label for="fileA">Track A (MP3)</label>
         <input id="fileA" type="file" accept="audio/mpeg,audio/mp3" />
-        <div style="margin:8px 0; text-align:center; color:#94a3b8">or</div>
-        <label for="urlA">Track A URL</label>
+        <div class="row mini"><span>or paste URL</span><button id="loadA" class="btn">Load A</button><label class="mini row"><input id="ctlA" type="checkbox"/> native controls</label></div>
         <input id="urlA" type="url" placeholder="https://example.com/a.mp3" />
+        <div class="mini">A source: <span id="srcA" class="mono">—</span></div>
       </div>
       <div class="card">
         <label for="fileB">Track B (MP3)</label>
         <input id="fileB" type="file" accept="audio/mpeg,audio/mp3" />
-        <div style="margin:8px 0; text-align:center; color:#94a3b8">or</div>
-        <label for="urlB">Track B URL</label>
+        <div class="row mini"><span>or paste URL</span><button id="loadB" class="btn">Load B</button><label class="mini row"><input id="ctlB" type="checkbox"/> native controls</label></div>
         <input id="urlB" type="url" placeholder="https://example.com/b.mp3" />
+        <div class="mini">B source: <span id="srcB" class="mono">—</span></div>
       </div>
     </div>
 
@@ -119,12 +123,12 @@
     </div>
 
     <!-- Hidden audio elements -->
-    <audio id="audioA" preload="auto" crossorigin="anonymous"></audio>
-    <audio id="audioB" preload="auto" crossorigin="anonymous"></audio>
+    <audio id="audioA" preload="auto"></audio>
+    <audio id="audioB" preload="auto"></audio>
 
     <footer>
       <div>Sync-safe: switching preserves <span class="mono">currentTime</span> and keeps tracks closely aligned.</div>
-      <div>Tip: ensure both files start with the same leading silence (or none) for perfect A/B.</div>
+      <div>Tip: ensure both files start with the same leading silence (or none) for perfect A/B. Remote URLs should be HTTPS and publicly readable.</div>
     </footer>
   </div>
 
@@ -155,6 +159,12 @@
   const fileB = $("fileB");
   const urlA = $("urlA");
   const urlB = $("urlB");
+  const loadA = $("loadA");
+  const loadB = $("loadB");
+  const ctlA = $("ctlA");
+  const ctlB = $("ctlB");
+  const srcA = $("srcA");
+  const srcB = $("srcB");
 
   // Helpers
   const fmt = (t) => {
@@ -168,6 +178,11 @@
   const getAudio = (which) => which === 'A' ? audioA : audioB;
   const act = () => getAudio(active);
   const oth = () => getAudio(other());
+
+  const setControls = () => {
+    audioA.controls = ctlA.checked;
+    audioB.controls = ctlB.checked;
+  };
 
   function updateDur(){
     const D = Math.min(audioA.duration||Infinity, audioB.duration||Infinity);
@@ -184,6 +199,8 @@
     activeLabel.className = (active === 'A') ? 'activeA' : 'activeB';
     playBtn.textContent = isPlaying ? '⏸ Pause' : '▶︎ Play';
     playBtn.setAttribute('aria-pressed', String(isPlaying));
+    srcA.textContent = audioA.currentSrc || audioA.src || '—';
+    srcB.textContent = audioB.currentSrc || audioB.src || '—';
   }
 
   function applyVolRate(){
@@ -193,36 +210,41 @@
     });
   }
 
+  // Decide crossOrigin based on URL origin
+  function setCrossOriginFor(audioEl, url){
+    try {
+      const u = new URL(url, window.location.href);
+      const isCross = u.origin !== window.location.origin;
+      if (isCross) {
+        audioEl.removeAttribute('crossorigin'); // not needed for simple playback
+        audioEl.crossOrigin = null;
+      } else {
+        audioEl.setAttribute('crossorigin','anonymous');
+        audioEl.crossOrigin = 'anonymous';
+      }
+    } catch(_) {
+      // If parsing fails, remove to be safe
+      audioEl.removeAttribute('crossorigin');
+      audioEl.crossOrigin = null;
+    }
+  }
+
   function loadSource(audioEl, fileInput, urlInput){
     if (fileInput.files && fileInput.files[0]){
       const objectUrl = URL.createObjectURL(fileInput.files[0]);
+      setCrossOriginFor(audioEl, window.location.href);
       audioEl.src = objectUrl;
-      // Local blobs are same-origin and safe
-      if (!audioEl.hasAttribute('crossorigin')) audioEl.setAttribute('crossorigin','anonymous');
     } else if (urlInput && urlInput.value) {
       let u = urlInput.value.trim();
       if (/^www\./i.test(u)) u = 'https://' + u; // add protocol if missing
-      try {
-        const urlObj = new URL(u, window.location.href);
-        const crossOrigin = urlObj.origin !== window.location.origin;
-        if (crossOrigin) {
-          // For simple playback, we don't need CORS; remove attribute to avoid CORS preflight failures
-          audioEl.removeAttribute('crossorigin');
-        } else {
-          audioEl.setAttribute('crossorigin','anonymous');
-        }
-      } catch(_){}
+      setCrossOriginFor(audioEl, u);
       audioEl.src = u;
     }
     audioEl.load();
   }
-    audioEl.load();
-  }
-    audioEl.load();
-  }
 
   function bothLoaded(){
-    return !!audioA.src && !!audioB.src;
+    return Boolean(audioA.src) && Boolean(audioB.src);
   }
 
   function startSyncLoop(){
@@ -232,14 +254,11 @@
       if (!isPlaying) return;
       const a = act();
       const b = oth();
-      // keep b parked at same time (muted) so switch is always instant
       const target = a.currentTime || 0;
       const delta = Math.abs((b.currentTime || 0) - target);
       if (delta > 0.05) {
-        // Only jump if noticeably off
         b.currentTime = target;
       }
-      // If one track is shorter, stop at the min duration
       const minDur = Math.min(a.duration || Infinity, b.duration || Infinity);
       if (isFinite(minDur) && a.currentTime >= minDur) {
         stop();
@@ -247,6 +266,27 @@
     }, 250);
   }
   function stopSyncLoop(){ if (syncInterval){ clearInterval(syncInterval); syncInterval = null; } }
+
+  function ensureMetadata(a){
+    return new Promise((resolve) => {
+      if (a.readyState >= 1) return resolve();
+      a.addEventListener('loadedmetadata', resolve, { once: true });
+    });
+  }
+  function ensureCanPlay(a, timeoutMs=5000){
+    return new Promise((resolve) => {
+      if (a.readyState >= 3) return resolve();
+      const onReady = () => { cleanup(); resolve(); };
+      const to = setTimeout(() => { cleanup(); resolve(); }, timeoutMs);
+      const cleanup = () => {
+        a.removeEventListener('canplay', onReady);
+        a.removeEventListener('canplaythrough', onReady);
+        clearTimeout(to);
+      };
+      a.addEventListener('canplay', onReady, { once: true });
+      a.addEventListener('canplaythrough', onReady, { once: true });
+    });
+  }
 
   async function play(){
     if (!bothLoaded()){
@@ -256,17 +296,18 @@
     applyVolRate();
     const a = act();
     const b = oth();
-    // Keep the inactive track silently shadowing the active time (we'll sync in the loop)
     b.muted = true;
     try {
+      await ensureMetadata(a); await ensureMetadata(b);
+      // Kick both into playing state for instant switch
       await a.play();
-      await b.play(); // keep in running state for instant switch (muted)
-      a.muted = false; // active one audible
+      await b.play();
+      a.muted = false;
       isPlaying = true;
       startSyncLoop();
       updateUI();
     } catch(err){
-      flash('Autoplay blocked: click Play again after interacting with the page.');
+      flash('Play failed (user gesture or blocked). Click Play again.');
       console.error(err);
     }
   }
@@ -291,16 +332,12 @@
     const dst = oth();
     const t = src.currentTime || 0;
 
-    // Ensure metadata is ready on destination before seeking
-    if (dst.readyState < 1) {
-      await new Promise(res => dst.addEventListener('loadedmetadata', res, { once: true }));
-    }
+    await ensureMetadata(dst);
     dst.currentTime = t;
 
     if (xfade.checked && isPlaying){
       await crossfade(src, dst, 0.14); // ~140ms soft switch
     } else {
-      // Instant hard switch: unmute destination, mute source, keep both playing
       try { await dst.play(); } catch(_){}
       dst.muted = false;
       src.muted = true;
@@ -309,33 +346,24 @@
       src.volume = master;
     }
 
-    // Swap active label after the actual audible swap
     active = other();
     updateUI();
   }
 
   function crossfade(from, to, seconds){
     return new Promise(async (resolve) => {
-      // Ensure both are playing to crossfade smoothly
       try { await to.play(); } catch(_){}
       try { await from.play(); } catch(_){}
       to.muted = false;
 
-      const steps = 14; // number of steps for the fade
-      let i = 0;
-      const master = parseFloat(vol.value);
-
+      const steps = 14; let i = 0; const master = parseFloat(vol.value);
       const iv = setInterval(() => {
-        i++;
-        const p = Math.min(1, i/steps);
+        i++; const p = Math.min(1, i/steps);
         from.volume = (1 - p) * master;
         to.volume = p * master;
         if (i>=steps){
           clearInterval(iv);
-          from.muted = true;
-          from.volume = master; // reset
-          to.volume = master;
-          resolve();
+          from.muted = true; from.volume = master; to.volume = master; resolve();
         }
       }, (seconds*1000)/steps);
     });
@@ -368,22 +396,28 @@
 
   vol.addEventListener('input', applyVolRate);
   rate.addEventListener('input', applyVolRate);
+  ctlA.addEventListener('change', setControls);
+  ctlB.addEventListener('change', setControls);
 
-  // Keep UI time rolling
+  // Keep UI time rolling and surface load state
   [audioA, audioB].forEach(a => {
+    a.addEventListener('loadstart', () => flash((a.id==='audioA'?'A':'B')+': loadstart'));
+    a.addEventListener('loadedmetadata', () => { flash((a.id==='audioA'?'A':'B')+': metadata'); updateDur(); updateUI(); });
+    a.addEventListener('canplay', () => flash((a.id==='audioA'?'A':'B')+': canplay'));
+    a.addEventListener('canplaythrough', () => flash((a.id==='audioA'?'A':'B')+': canplaythrough'));
     a.addEventListener('timeupdate', updateUI);
-    a.addEventListener('loadedmetadata', () => { updateDur(); updateUI(); });
-    a.addEventListener('canplay', () => flash('Ready: ' + (a.id === 'audioA' ? 'Track A' : 'Track B')));
+    a.addEventListener('ended', () => stop());
     a.addEventListener('error', () => {
       const code = (a.error && a.error.code) ? a.error.code : 'unknown';
       flash((a.id === 'audioA' ? 'Track A' : 'Track B') + ' failed to load (error code ' + code + ').');
     });
-    a.addEventListener('ended', () => stop());
   });
 
   // Loading sources
   fileA.addEventListener('change', () => { loadSource(audioA, fileA, urlA); });
   fileB.addEventListener('change', () => { loadSource(audioB, fileB, urlB); });
+  loadA.addEventListener('click', () => loadSource(audioA, fileA, urlA));
+  loadB.addEventListener('click', () => loadSource(audioB, fileB, urlB));
 
   // Auto-load when user pastes/types URLs (no need to blur)
   function debounce(fn, ms){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); }; }
@@ -395,36 +429,7 @@
   bindUrl(urlA, audioA, fileA);
   bindUrl(urlB, audioB, fileB);
 
-  // Helpful retry if CORS blocks crossOrigin fetch
-  function attachErrorRetry(el){
-    let retried = false;
-    el.addEventListener('error', () => {
-      if (retried) return;
-      retried = true;
-      if (el.getAttribute('crossorigin') !== null) {
-        el.removeAttribute('crossorigin');
-        const cur = el.currentSrc || el.src;
-        el.src = cur; // force reload without crossOrigin
-        el.load();
-        flash('Retrying without crossOrigin (remote host may not send CORS headers).');
-      }
-    });
-  }
-  attachErrorRetry(audioA);
-  attachErrorRetry(audioB);
-
-  // Keyboard shortcuts
-  window.addEventListener('keydown', (e) => {
-    if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return; // don't steal typing
-    if (e.code === 'Space') { e.preventDefault(); isPlaying ? pause() : play(); }
-    if (e.key.toLowerCase() === 's') { e.preventDefault(); doSwitch(); }
-    if (e.key === 'ArrowLeft') { e.preventDefault(); nudge(-5); }
-    if (e.key === 'ArrowRight') { e.preventDefault(); nudge(5); }
-  });
-  function nudge(sec){
-    const now = Math.max(0, (act().currentTime || 0) + sec);
-    [audioA, audioB].forEach(a => { a.currentTime = now; });
-  }
+  setControls();
 
   // Drag-and-drop convenience
   ;['dragenter','dragover'].forEach(evt => document.addEventListener(evt, e => { e.preventDefault(); }));
