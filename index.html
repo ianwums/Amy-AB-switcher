@@ -244,6 +244,7 @@
     try {
       await a.play();
       await b.play(); // keep in running state for instant switch (muted)
+      a.muted = false; // make sure the active one is audible
       isPlaying = true;
       startSyncLoop();
       updateUI();
@@ -276,9 +277,17 @@
 
     if (xfade.checked && isPlaying){
       await crossfade(src, dst, 0.14); // ~140ms soft switch
+    } else {
+      // Instant hard switch: unmute destination, mute source, keep both playing
+      try { await dst.play(); } catch(_){}
+      dst.muted = false;
+      src.muted = true;
+      const master = parseFloat(vol.value);
+      dst.volume = master;
+      src.volume = master;
     }
 
-    // Swap active label after fade to ensure UI matches audible output
+    // Swap active label after the actual audible swap
     active = other();
     updateUI();
   }
@@ -292,8 +301,6 @@
 
       const steps = 14; // number of steps for the fade
       let i = 0;
-      const fromStart = from.volume;
-      const toStart = to.volume;
       const master = parseFloat(vol.value);
 
       const iv = setInterval(() => {
