@@ -197,12 +197,25 @@
     if (fileInput.files && fileInput.files[0]){
       const objectUrl = URL.createObjectURL(fileInput.files[0]);
       audioEl.src = objectUrl;
+      // Local blobs are same-origin and safe
+      if (!audioEl.hasAttribute('crossorigin')) audioEl.setAttribute('crossorigin','anonymous');
     } else if (urlInput && urlInput.value) {
       let u = urlInput.value.trim();
-      // If it looks like a URL but missing protocol, assume https
-      if (/^www\./i.test(u)) u = 'https://' + u;
+      if (/^www\./i.test(u)) u = 'https://' + u; // add protocol if missing
+      try {
+        const urlObj = new URL(u, window.location.href);
+        const crossOrigin = urlObj.origin !== window.location.origin;
+        if (crossOrigin) {
+          // For simple playback, we don't need CORS; remove attribute to avoid CORS preflight failures
+          audioEl.removeAttribute('crossorigin');
+        } else {
+          audioEl.setAttribute('crossorigin','anonymous');
+        }
+      } catch(_){}
       audioEl.src = u;
     }
+    audioEl.load();
+  }
     audioEl.load();
   }
     audioEl.load();
@@ -243,13 +256,12 @@
     applyVolRate();
     const a = act();
     const b = oth();
-    // Keep the inactive track silently shadowing the active time
+    // Keep the inactive track silently shadowing the active time (we'll sync in the loop)
     b.muted = true;
-    b.currentTime = a.currentTime || 0;
     try {
       await a.play();
       await b.play(); // keep in running state for instant switch (muted)
-      a.muted = false; // make sure the active one is audible
+      a.muted = false; // active one audible
       isPlaying = true;
       startSyncLoop();
       updateUI();
@@ -278,6 +290,11 @@
     const src = act();
     const dst = oth();
     const t = src.currentTime || 0;
+
+    // Ensure metadata is ready on destination before seeking
+    if (dst.readyState < 1) {
+      await new Promise(res => dst.addEventListener('loadedmetadata', res, { once: true }));
+    }
     dst.currentTime = t;
 
     if (xfade.checked && isPlaying){
@@ -356,6 +373,11 @@
   [audioA, audioB].forEach(a => {
     a.addEventListener('timeupdate', updateUI);
     a.addEventListener('loadedmetadata', () => { updateDur(); updateUI(); });
+    a.addEventListener('canplay', () => flash('Ready: ' + (a.id === 'audioA' ? 'Track A' : 'Track B')));
+    a.addEventListener('error', () => {
+      const code = (a.error && a.error.code) ? a.error.code : 'unknown';
+      flash((a.id === 'audioA' ? 'Track A' : 'Track B') + ' failed to load (error code ' + code + ').');
+    });
     a.addEventListener('ended', () => stop());
   });
 
