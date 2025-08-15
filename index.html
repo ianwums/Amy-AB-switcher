@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dual-Track A/B Audio Player</title>
+  <style>
+    :root {
+      --bg: #0f172a;        /* slate-900 */
+      --panel: #111827;     /* gray-900 */
+      --muted: #334155;     /* slate-600 */
+      --text: #e5e7eb;      /* gray-200 */
+      --accent: #22d3ee;    /* cyan-400 */
+      --accent-2: #a78bfa;  /* violet-400 */
+      --danger: #ef4444;    /* red-500 */
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1000px 600px at 20% 0%, #0b1220 0%, var(--bg) 60%);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .wrap { max-width: 900px; margin: 32px auto; padding: 0 16px; }
+    header { display:flex; align-items:center; justify-content:space-between; gap: 12px; }
+    h1 { font-weight: 700; font-size: clamp(20px, 3vw, 28px); margin: 0; }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px; padding: 16px; box-shadow: 0 10px 24px rgba(0,0,0,0.25);
+    }
+    .grid { display:grid; grid-template-columns: 1fr; gap: 16px; }
+    @media (min-width: 720px){ .grid { grid-template-columns: 1fr 1fr; } }
+
+    label { font-size: 13px; color: #cbd5e1; display:block; margin-bottom: 6px; }
+    input[type="file"], input[type="url"], input[type="text"] {
+      width:100%; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.12);
+      background: #0b1220; color: var(--text);
+    }
+    .bar { display:flex; align-items:center; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      appearance: none; border: 1px solid rgba(255,255,255,0.12); background: var(--panel); color: var(--text);
+      padding: 10px 14px; border-radius: 999px; font-weight: 600; cursor: pointer;
+      transition: transform .08s ease, background .2s ease, box-shadow .2s ease;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(0,0,0,0.3); }
+    .btn:active { transform: translateY(0); }
+    .btn.primary { border-color: rgba(34,211,238,0.6); box-shadow: inset 0 0 0 1px rgba(34,211,238,0.3); }
+    .btn.alt { border-color: rgba(167,139,250,0.5); box-shadow: inset 0 0 0 1px rgba(167,139,250,0.25); }
+    .btn.danger { border-color: rgba(239,68,68,0.5); box-shadow: inset 0 0 0 1px rgba(239,68,68,0.25); }
+
+    .range { flex:1 1 220px; display:flex; align-items:center; gap: 8px; }
+    input[type="range"] { width:100%; }
+
+    .chips { display:flex; gap:8px; flex-wrap:wrap; }
+    .chip { padding:6px 10px; border-radius:999px; background: rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1);
+      font-size:12px; color:#cbd5e1; }
+
+    .status { font-size:12px; color:#a3a3a3; }
+
+    .activeA { color: var(--accent); }
+    .activeB { color: var(--accent-2); }
+
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    footer { margin-top: 22px; font-size: 12px; color: #9ca3af; display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    kbd { background:#111827; border:1px solid rgba(255,255,255,0.12); border-bottom-color: rgba(0,0,0,0.6); padding:2px 6px; border-radius:6px; font-size:11px; box-shadow: inset 0 -1px 0 rgba(255,255,255,0.06); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Dual‑Track A/B Audio Player</h1>
+      <div class="chips">
+        <span class="chip">Space: Play/Pause</span>
+        <span class="chip">S: Switch</span>
+        <span class="chip">←/→: Seek ±5s</span>
+      </div>
+    </header>
+
+    <div class="grid" role="region" aria-label="Load audio sources">
+      <div class="card">
+        <label for="fileA">Track A (MP3)</label>
+        <input id="fileA" type="file" accept="audio/mpeg,audio/mp3" />
+        <div style="margin:8px 0; text-align:center; color:#94a3b8">or</div>
+        <label for="urlA">Track A URL</label>
+        <input id="urlA" type="url" placeholder="https://example.com/a.mp3" />
+      </div>
+      <div class="card">
+        <label for="fileB">Track B (MP3)</label>
+        <input id="fileB" type="file" accept="audio/mpeg,audio/mp3" />
+        <div style="margin:8px 0; text-align:center; color:#94a3b8">or</div>
+        <label for="urlB">Track B URL</label>
+        <input id="urlB" type="url" placeholder="https://example.com/b.mp3" />
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px" role="region" aria-label="Transport controls">
+      <div class="bar" style="margin-bottom:10px">
+        <button id="playBtn" class="btn primary" aria-pressed="false">▶︎ Play</button>
+        <button id="switchBtn" class="btn alt" title="Switch between A and B (keeps time)">⇄ Switch</button>
+        <button id="stopBtn" class="btn danger">■ Stop</button>
+        <div class="range">
+          <span class="mono" id="cur">00:00</span>
+          <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek" />
+          <span class="mono" id="dur">00:00</span>
+        </div>
+      </div>
+
+      <div class="bar" style="margin-top:8px">
+        <label for="vol" class="mono">Vol</label>
+        <input id="vol" type="range" min="0" max="1" step="0.01" value="1" />
+        <label for="rate" class="mono">Rate</label>
+        <input id="rate" type="range" min="0.5" max="2" step="0.05" value="1" />
+        <label class="mono"><input id="xfade" type="checkbox" /> Cross‑fade</label>
+      </div>
+
+      <div class="status" id="status">Load two MP3s (A & B). Active: <span id="activeLabel" class="activeA">A</span></div>
+    </div>
+
+    <!-- Hidden audio elements -->
+    <audio id="audioA" preload="auto" crossorigin="anonymous"></audio>
+    <audio id="audioB" preload="auto" crossorigin="anonymous"></audio>
+
+    <footer>
+      <div>Sync-safe: switching preserves <span class="mono">currentTime</span> and keeps tracks closely aligned.</div>
+      <div>Tip: ensure both files start with the same leading silence (or none) for perfect A/B.</div>
+    </footer>
+  </div>
+
+<script>
+(function(){
+  const $ = (id) => document.getElementById(id);
+  const audioA = $("audioA");
+  const audioB = $("audioB");
+  let active = 'A'; // 'A' or 'B'
+  let isPlaying = false;
+  let dragging = false; // seeking via slider
+  let syncInterval = null;
+
+  // UI elements
+  const playBtn = $("playBtn");
+  const switchBtn = $("switchBtn");
+  const stopBtn = $("stopBtn");
+  const seek = $("seek");
+  const cur = $("cur");
+  const dur = $("dur");
+  const vol = $("vol");
+  const rate = $("rate");
+  const xfade = $("xfade");
+  const status = $("status");
+  const activeLabel = $("activeLabel");
+
+  const fileA = $("fileA");
+  const fileB = $("fileB");
+  const urlA = $("urlA");
+  const urlB = $("urlB");
+
+  // Helpers
+  const fmt = (t) => {
+    if (!isFinite(t)) return '00:00';
+    const s = Math.max(0, Math.floor(t));
+    const m = Math.floor(s/60); const sec = s%60; const h = Math.floor(m/60);
+    const mm = (h>0? String(m%60).padStart(2,'0') : String(m));
+    return (h>0? `${h}:${mm}:${String(sec).padStart(2,'0')}` : `${mm}:${String(sec).padStart(2,'0')}`);
+  };
+  const other = () => active === 'A' ? 'B' : 'A';
+  const getAudio = (which) => which === 'A' ? audioA : audioB;
+  const act = () => getAudio(active);
+  const oth = () => getAudio(other());
+
+  function updateDur(){
+    const D = Math.min(audioA.duration||Infinity, audioB.duration||Infinity);
+    dur.textContent = fmt(D);
+    seek.max = isFinite(D) ? Math.floor(D*1000) : 1000; // millisecond-ish resolution
+  }
+
+  function updateUI(){
+    const a = act();
+    const time = Math.min(a.currentTime || 0, a.duration || Infinity);
+    if (!dragging) seek.value = Math.floor(time*1000);
+    cur.textContent = fmt(time);
+    activeLabel.textContent = active;
+    activeLabel.className = (active === 'A') ? 'activeA' : 'activeB';
+    playBtn.textContent = isPlaying ? '⏸ Pause' : '▶︎ Play';
+    playBtn.setAttribute('aria-pressed', String(isPlaying));
+  }
+
+  function applyVolRate(){
+    [audioA, audioB].forEach(a => {
+      a.volume = parseFloat(vol.value);
+      a.playbackRate = parseFloat(rate.value);
+    });
+  }
+
+  function loadSource(audioEl, fileInput, urlInput){
+    if (fileInput.files && fileInput.files[0]){
+      const objectUrl = URL.createObjectURL(fileInput.files[0]);
+      audioEl.src = objectUrl;
+    } else if (urlInput.value) {
+      audioEl.src = urlInput.value.trim();
+    }
+    audioEl.load();
+  }
+
+  function bothLoaded(){
+    return !!audioA.src && !!audioB.src;
+  }
+
+  function startSyncLoop(){
+    stopSyncLoop();
+    // Correct small drift every 250ms
+    syncInterval = setInterval(() => {
+      if (!isPlaying) return;
+      const a = act();
+      const b = oth();
+      // keep b parked at same time (muted) so switch is always instant
+      const target = a.currentTime || 0;
+      const delta = Math.abs((b.currentTime || 0) - target);
+      if (delta > 0.05) {
+        // Only jump if noticeably off
+        b.currentTime = target;
+      }
+      // If one track is shorter, stop at the min duration
+      const minDur = Math.min(a.duration || Infinity, b.duration || Infinity);
+      if (isFinite(minDur) && a.currentTime >= minDur) {
+        stop();
+      }
+    }, 250);
+  }
+  function stopSyncLoop(){ if (syncInterval){ clearInterval(syncInterval); syncInterval = null; } }
+
+  async function play(){
+    if (!bothLoaded()){
+      flash('Please load both Track A and Track B.');
+      return;
+    }
+    applyVolRate();
+    const a = act();
+    const b = oth();
+    // Keep the inactive track silently shadowing the active time
+    b.muted = true;
+    b.currentTime = a.currentTime || 0;
+    try {
+      await a.play();
+      await b.play(); // keep in running state for instant switch (muted)
+      isPlaying = true;
+      startSyncLoop();
+      updateUI();
+    } catch(err){
+      flash('Autoplay blocked: click Play again after interacting with the page.');
+      console.error(err);
+    }
+  }
+
+  function pause(){
+    act().pause();
+    oth().pause();
+    isPlaying = false;
+    stopSyncLoop();
+    updateUI();
+  }
+
+  function stop(){
+    pause();
+    [audioA, audioB].forEach(a => { a.currentTime = 0; });
+    updateUI();
+  }
+
+  async function doSwitch(){
+    if (!bothLoaded()) return;
+    const src = act();
+    const dst = oth();
+    const t = src.currentTime || 0;
+    dst.currentTime = t;
+
+    if (xfade.checked && isPlaying){
+      await crossfade(src, dst, 0.14); // ~140ms soft switch
+    }
+
+    // Swap active label after fade to ensure UI matches audible output
+    active = other();
+    updateUI();
+  }
+
+  function crossfade(from, to, seconds){
+    return new Promise(async (resolve) => {
+      // Ensure both are playing to crossfade smoothly
+      try { await to.play(); } catch(_){}
+      try { await from.play(); } catch(_){}
+      to.muted = false;
+
+      const steps = 14; // number of steps for the fade
+      let i = 0;
+      const fromStart = from.volume;
+      const toStart = to.volume;
+      const master = parseFloat(vol.value);
+
+      const iv = setInterval(() => {
+        i++;
+        const p = Math.min(1, i/steps);
+        from.volume = (1 - p) * master;
+        to.volume = p * master;
+        if (i>=steps){
+          clearInterval(iv);
+          from.muted = true;
+          from.volume = master; // reset
+          to.volume = master;
+          resolve();
+        }
+      }, (seconds*1000)/steps);
+    });
+  }
+
+  function flash(msg){
+    status.textContent = msg + ` — Active: `;
+    const span = document.createElement('span');
+    span.id = 'activeLabel';
+    span.textContent = active;
+    span.className = (active === 'A') ? 'activeA' : 'activeB';
+    status.appendChild(span);
+  }
+
+  // Wire events
+  playBtn.addEventListener('click', () => isPlaying ? pause() : play());
+  stopBtn.addEventListener('click', stop);
+  switchBtn.addEventListener('click', doSwitch);
+
+  seek.addEventListener('input', () => {
+    dragging = true;
+    const t = parseInt(seek.value, 10)/1000;
+    cur.textContent = fmt(t);
+  });
+  seek.addEventListener('change', () => {
+    const t = parseInt(seek.value, 10)/1000;
+    [audioA, audioB].forEach(a => { a.currentTime = t; });
+    dragging = false;
+  });
+
+  vol.addEventListener('input', applyVolRate);
+  rate.addEventListener('input', applyVolRate);
+
+  // Keep UI time rolling
+  [audioA, audioB].forEach(a => {
+    a.addEventListener('timeupdate', updateUI);
+    a.addEventListener('loadedmetadata', () => { updateDur(); updateUI(); });
+    a.addEventListener('ended', () => stop());
+  });
+
+  // Loading sources
+  fileA.addEventListener('change', () => { loadSource(audioA, fileA, urlA); });
+  fileB.addEventListener('change', () => { loadSource(audioB, fileB, urlB); });
+  urlA.addEventListener('change', () => { loadSource(audioA, fileA, urlA); });
+  urlB.addEventListener('change', () => { loadSource(audioB, fileB, urlB); });
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return; // don't steal typing
+    if (e.code === 'Space') { e.preventDefault(); isPlaying ? pause() : play(); }
+    if (e.key.toLowerCase() === 's') { e.preventDefault(); doSwitch(); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); nudge(-5); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); nudge(5); }
+  });
+  function nudge(sec){
+    const now = Math.max(0, (act().currentTime || 0) + sec);
+    [audioA, audioB].forEach(a => { a.currentTime = now; });
+  }
+
+  // Drag-and-drop convenience
+  ;['dragenter','dragover'].forEach(evt => document.addEventListener(evt, e => { e.preventDefault(); }));
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const files = [...(e.dataTransfer?.files||[])].filter(f => /mp3|mpeg$/i.test(f.type));
+    if (!files.length) return;
+    if (!fileA.files.length) {
+      fileA.files = fileList(files[0]);
+      fileA.dispatchEvent(new Event('change'));
+    } else if (!fileB.files.length) {
+      fileB.files = fileList(files[1] || files[0]);
+      fileB.dispatchEvent(new Event('change'));
+    }
+  });
+  function fileList(file) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    return dt.files;
+  }
+
+  // Initialize UI
+  updateUI();
+})();
+</script>
+</body>
+</html>
