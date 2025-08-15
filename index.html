@@ -197,9 +197,14 @@
     if (fileInput.files && fileInput.files[0]){
       const objectUrl = URL.createObjectURL(fileInput.files[0]);
       audioEl.src = objectUrl;
-    } else if (urlInput.value) {
-      audioEl.src = urlInput.value.trim();
+    } else if (urlInput && urlInput.value) {
+      let u = urlInput.value.trim();
+      // If it looks like a URL but missing protocol, assume https
+      if (/^www\./i.test(u)) u = 'https://' + u;
+      audioEl.src = u;
     }
+    audioEl.load();
+  }
     audioEl.load();
   }
 
@@ -357,8 +362,34 @@
   // Loading sources
   fileA.addEventListener('change', () => { loadSource(audioA, fileA, urlA); });
   fileB.addEventListener('change', () => { loadSource(audioB, fileB, urlB); });
-  urlA.addEventListener('change', () => { loadSource(audioA, fileA, urlA); });
-  urlB.addEventListener('change', () => { loadSource(audioB, fileB, urlB); });
+
+  // Auto-load when user pastes/types URLs (no need to blur)
+  function debounce(fn, ms){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); }; }
+  function bindUrl(urlInput, audioEl, fileInput){
+    const load = () => loadSource(audioEl, fileInput, urlInput);
+    ['input','change','paste'].forEach(ev => urlInput.addEventListener(ev, debounce(load, 200)));
+    urlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter'){ e.preventDefault(); load(); }});
+  }
+  bindUrl(urlA, audioA, fileA);
+  bindUrl(urlB, audioB, fileB);
+
+  // Helpful retry if CORS blocks crossOrigin fetch
+  function attachErrorRetry(el){
+    let retried = false;
+    el.addEventListener('error', () => {
+      if (retried) return;
+      retried = true;
+      if (el.getAttribute('crossorigin') !== null) {
+        el.removeAttribute('crossorigin');
+        const cur = el.currentSrc || el.src;
+        el.src = cur; // force reload without crossOrigin
+        el.load();
+        flash('Retrying without crossOrigin (remote host may not send CORS headers).');
+      }
+    });
+  }
+  attachErrorRetry(audioA);
+  attachErrorRetry(audioB);
 
   // Keyboard shortcuts
   window.addEventListener('keydown', (e) => {
