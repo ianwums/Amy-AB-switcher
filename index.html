@@ -431,6 +431,21 @@
 
   setControls();
 
+  // Keyboard shortcuts
+  function nudge(sec){
+    const now = Math.max(0, (act().currentTime || 0) + sec);
+    [audioA, audioB].forEach(a => { a.currentTime = now; });
+  }
+  window.addEventListener('keydown', (e) => {
+    const tag = document.activeElement?.tagName;
+    const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || document.activeElement?.isContentEditable;
+    if (isTyping) return; // don't steal typing
+    if (e.code === 'Space') { e.preventDefault(); isPlaying ? pause() : play(); }
+    else if (e.key && e.key.toLowerCase() === 's') { e.preventDefault(); doSwitch(); }
+    else if (e.key === 'ArrowLeft')  { e.preventDefault(); nudge(-5); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(5); }
+  }, { capture: true });
+
   // Drag-and-drop convenience
   ;['dragenter','dragover'].forEach(evt => document.addEventListener(evt, e => { e.preventDefault(); }));
   document.addEventListener('drop', (e) => {
